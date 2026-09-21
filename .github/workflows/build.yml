@@ -8,6 +8,11 @@ name: Build Sales Manager (Android + Windows)
 #    (لا تضع service_role key هنا نهائيًا)
 # 3) أي Push على main أو أي Tag يبدأ بـ v (زي v0.5.0) هيشغّل البناء تلقائيًا،
 #    أو تقدر تشغّله يدويًا من تبويب Actions زر Run workflow.
+#
+# ملاحظة مهمة: PROJECT_DIR لازم يطابق بالظبط مكان مشروع الفلاتر
+# (اللي فيه pubspec.yaml) جوه الريبو بتاعك.
+# القيمة "." تعني إن pubspec.yaml موجود على جذر الريبو مباشرة (زي حالتنا).
+# لو حطيت المشروع جوه مجلد فرعي يوماً ما، غيّرها لاسم المجلد ده.
 
 on:
   push:
@@ -23,7 +28,7 @@ concurrency:
 
 env:
   FLUTTER_CHANNEL: stable
-  PROJECT_DIR: sales_manager_v0.5
+  PROJECT_DIR: .
 
 jobs:
   analyze:
@@ -31,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: sales_manager_v0.5
+        working-directory: ${{ env.PROJECT_DIR }}
     steps:
       - uses: actions/checkout@v4
 
@@ -56,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: sales_manager_v0.5
+        working-directory: ${{ env.PROJECT_DIR }}
     steps:
       - uses: actions/checkout@v4
 
@@ -74,7 +79,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.PUB_CACHE || '~/.pub-cache' }}
-          key: pub-${{ runner.os }}-${{ hashFiles('sales_manager_v0.5/pubspec.yaml') }}
+          key: pub-${{ runner.os }}-${{ hashFiles(format('{0}/pubspec.yaml', env.PROJECT_DIR)) }}
 
       - name: flutter pub get
         run: flutter pub get
@@ -85,8 +90,16 @@ jobs:
             flutter create . --platforms=android --project-name=sales_manager --org=com.salesmanager
           fi
 
-      - name: تجهيز Android لإشعارات flutter_local_notifications
+      - name: تجهيز Android (صلاحية الإشعارات + صلاحية الإنترنت + desugaring)
         run: python3 tool/patch_android.py
+
+      - name: تحقق من وجود صلاحية INTERNET في الـ Manifest
+        run: |
+          if ! grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml; then
+            echo "::error::صلاحية INTERNET مش موجودة في AndroidManifest.xml — التطبيق هيفشل بـ SocketException: Failed host lookup على أي اتصال شبكة في نسخة release."
+            exit 1
+          fi
+          echo "✓ صلاحية INTERNET موجودة"
 
       - name: flutter build apk --release
         run: |
@@ -99,7 +112,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sales-manager-android-apk
-          path: sales_manager_v0.5/build/app/outputs/flutter-apk/*.apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -109,7 +122,7 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        working-directory: sales_manager_v0.5
+        working-directory: ${{ env.PROJECT_DIR }}
     steps:
       - uses: actions/checkout@v4
 
@@ -122,7 +135,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.PUB_CACHE || '~/AppData/Local/Pub/Cache' }}
-          key: pub-${{ runner.os }}-${{ hashFiles('sales_manager_v0.5/pubspec.yaml') }}
+          key: pub-${{ runner.os }}-${{ hashFiles(format('{0}/pubspec.yaml', env.PROJECT_DIR)) }}
 
       - name: flutter pub get
         run: flutter pub get
@@ -152,6 +165,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sales-manager-windows
-          path: sales_manager_v0.5/sales-manager-windows.zip
+          path: ${{ env.PROJECT_DIR }}/sales-manager-windows.zip
           if-no-files-found: error
           retention-days: 30
